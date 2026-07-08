@@ -9,8 +9,9 @@ use oxc_formatter::{
 
 use super::{
     super::oxfmtrc::{
-        ArrowParensConfig, CustomGroupItemConfig, EmbeddedLanguageFormattingConfig, FormatConfig,
-        HtmlWhitespaceSensitivityConfig, JsdocUserConfig, ObjectWrapConfig, QuotePropsConfig,
+        ArrowParensConfig, CommentLineStrategyConfig, CustomGroupItemConfig,
+        EmbeddedLanguageFormattingConfig, FormatConfig, HtmlWhitespaceSensitivityConfig,
+        JsdocUserConfig, LineWrappingStyleConfig, ObjectWrapConfig, QuotePropsConfig,
         SortGroupItemConfig, SortImportsUserConfig, SortOrderConfig, SortTailwindcssUserConfig,
         TrailingCommaConfig,
     },
@@ -138,7 +139,7 @@ pub fn to_oxc_formatter(config: &FormatConfig) -> Result<JsFormatOptions, String
         });
     }
 
-    format_options.jsdoc = to_jsdoc(config)?;
+    format_options.jsdoc = to_jsdoc(config);
 
     Ok(format_options)
 }
@@ -272,18 +273,12 @@ pub(super) fn to_sort_imports(config: &FormatConfig) -> Result<Option<SortImport
     Ok(Some(sort_imports))
 }
 
-/// Parse and validate `jsdoc` into [`oxc_formatter::JsdocOptions`].
+/// Build `jsdoc` into [`oxc_formatter::JsdocOptions`].
 ///
-/// Shared by both [`to_oxc_formatter()`] (build) and [`super::validate::validate()`] (gate).
-///
-/// # Errors
-/// Returns an error if `lineWrappingStyle` / `commentLineStrategy` is invalid.
-pub(super) fn to_jsdoc(
-    config: &FormatConfig,
-) -> Result<Option<oxc_formatter::JsdocOptions>, String> {
-    let Some(jsdoc_config) = config.jsdoc.clone().and_then(JsdocUserConfig::into_config) else {
-        return Ok(None);
-    };
+/// All enum-valued options (`lineWrappingStyle`, `commentLineStrategy`) are validated at
+/// deserialization time by serde, so this conversion is infallible.
+pub(super) fn to_jsdoc(config: &FormatConfig) -> Option<oxc_formatter::JsdocOptions> {
+    let jsdoc_config = config.jsdoc.clone().and_then(JsdocUserConfig::into_config)?;
 
     let mut opts = oxc_formatter::JsdocOptions::default();
     if let Some(v) = jsdoc_config.capitalize_descriptions {
@@ -298,27 +293,17 @@ pub(super) fn to_jsdoc(
     if let Some(v) = jsdoc_config.prefer_code_fences {
         opts.prefer_code_fences = v;
     }
-    if let Some(ref v) = jsdoc_config.line_wrapping_style {
-        opts.line_wrapping_style = match v.as_str() {
-            "greedy" => oxc_formatter::LineWrappingStyle::Greedy,
-            "balance" => oxc_formatter::LineWrappingStyle::Balance,
-            other => {
-                return Err(format!(
-                    "Invalid jsdoc lineWrappingStyle: {other:?}. Expected \"greedy\" or \"balance\"."
-                ));
-            }
+    if let Some(v) = jsdoc_config.line_wrapping_style {
+        opts.line_wrapping_style = match v {
+            LineWrappingStyleConfig::Greedy => oxc_formatter::LineWrappingStyle::Greedy,
+            LineWrappingStyleConfig::Balance => oxc_formatter::LineWrappingStyle::Balance,
         };
     }
-    if let Some(ref v) = jsdoc_config.comment_line_strategy {
-        opts.comment_line_strategy = match v.as_str() {
-            "singleLine" => oxc_formatter::CommentLineStrategy::SingleLine,
-            "multiline" => oxc_formatter::CommentLineStrategy::Multiline,
-            "keep" => oxc_formatter::CommentLineStrategy::Keep,
-            other => {
-                return Err(format!(
-                    "Invalid jsdoc commentLineStrategy: {other:?}. Expected \"singleLine\", \"multiline\", or \"keep\"."
-                ));
-            }
+    if let Some(v) = jsdoc_config.comment_line_strategy {
+        opts.comment_line_strategy = match v {
+            CommentLineStrategyConfig::SingleLine => oxc_formatter::CommentLineStrategy::SingleLine,
+            CommentLineStrategyConfig::Multiline => oxc_formatter::CommentLineStrategy::Multiline,
+            CommentLineStrategyConfig::Keep => oxc_formatter::CommentLineStrategy::Keep,
         };
     }
     if let Some(v) = jsdoc_config.separate_tag_groups {
@@ -337,7 +322,7 @@ pub(super) fn to_jsdoc(
         opts.keep_unparsable_example_indent = v;
     }
 
-    Ok(Some(opts))
+    Some(opts)
 }
 
 // ---
@@ -671,9 +656,23 @@ mod tests {
         assert!(validate(&config).is_err_and(|e| e.contains("start")));
         assert!(to_oxc_formatter(&config).is_err_and(|e| e.contains("start")));
 
-        // JS-specific error (jsdoc enum).
-        let config: FormatConfig =
-            serde_json::from_str(r#"{ "jsdoc": { "lineWrappingStyle": "bogus" } }"#).unwrap();
-        assert!(validate(&config).is_err_and(|e| e.contains("lineWrappingStyle")));
+        // Invalid jsdoc enum values are rejected at deserialization time by serde,
+        // like every other enum-valued option (e.g. `experimentalSortImports.order`).
+        assert!(
+            serde_json::from_str::<FormatConfig>(
+                r#"{ "jsdoc": { "lineWrappingStyle": "bogus" } }"#
+            )
+            .is_err()
+        );
+
+        // Valid values deserialize and build without error.
+        let config: FormatConfig = serde_json::from_str(
+            r#"{ "jsdoc": { "lineWrappingStyle": "balance", "commentLineStrategy": "keep" } }"#,
+        )
+        .unwrap();
+        assert!(validate(&config).is_ok());
+        let jsdoc = to_jsdoc(&config).unwrap();
+        assert!(matches!(jsdoc.line_wrapping_style, oxc_formatter::LineWrappingStyle::Balance));
+        assert!(matches!(jsdoc.comment_line_strategy, oxc_formatter::CommentLineStrategy::Keep));
     }
 }

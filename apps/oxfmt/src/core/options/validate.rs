@@ -1,7 +1,6 @@
 use super::{
-    super::oxfmtrc::FormatConfig,
-    to_core_options::to_core_options,
-    to_oxc_formatter::{to_jsdoc, to_sort_imports},
+    super::oxfmtrc::FormatConfig, to_core_options::to_core_options,
+    to_oxc_formatter::to_sort_imports,
 };
 
 /// Validate the entire config (core + JS/TS-specific options)
@@ -16,6 +15,7 @@ use super::{
 pub fn validate(config: &FormatConfig) -> Result<(), String> {
     to_core_options(config)?;
     to_sort_imports(config)?;
-    to_jsdoc(config)?;
+    // `jsdoc` options are enums validated by serde at deserialization time, so there is
+    // nothing to gate here (see `to_jsdoc`).
     Ok(())
 }

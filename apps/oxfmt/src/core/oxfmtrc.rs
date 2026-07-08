@@ -761,6 +761,21 @@ impl JsdocUserConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LineWrappingStyleConfig {
+    Greedy,
+    Balance,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum CommentLineStrategyConfig {
+    SingleLine,
+    Multiline,
+    Keep,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct JsdocConfig {
@@ -791,7 +806,7 @@ pub struct JsdocConfig {
     ///
     /// - Default: `"greedy"`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub line_wrapping_style: Option<String>,
+    pub line_wrapping_style: Option<LineWrappingStyleConfig>,
     /// How to format comment blocks.
     ///
     /// - `"singleLine"` — Convert to single-line `/** content */` when possible.
@@ -800,7 +815,7 @@ pub struct JsdocConfig {
     ///
     /// - Default: `"singleLine"`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub comment_line_strategy: Option<String>,
+    pub comment_line_strategy: Option<CommentLineStrategyConfig>,
     /// Add blank lines between different tag groups (e.g. between `@param` and `@returns`).
     ///
     /// - Default: `false`
